@@ -15,22 +15,28 @@ jobs:
   build:
     name: Build distribution 📦
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
-    - name: Get date
-      id: date
-      run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
-    - name: Update version for repository_dispatch
-      if: github.event_name == 'repository_dispatch' && github.event.client_payload.source == 'llama-stack-nightly'
+    - name: Set distribution version
+      if: >-
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'repository_dispatch' &&
+        github.event.client_payload.source == 'llama-stack-nightly')
+      env:
+        RELEASE_VERSION: ${{ inputs.version || github.event.client_payload.version }}
+      shell: bash
       run: |
-        sed -i 's/version="\([^"]*\)"/version="${{ github.event.client_payload.version }}"/' setup.py
-    - name: Update version for manual RC
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        sed -i 's/version="\([^"]*\)"/version="${{ inputs.version }}"/' setup.py
+        if [[ ! "$RELEASE_VERSION" =~ ^[0-9][0-9A-Za-z.!+_-]*$ ]]; then
+          printf 'Invalid distribution version\n' >&2
+          exit 1
+        fi
+        grep -Eq '^version = "[^"]*"$' pyproject.toml
+        sed -i -E 's/^version = "[^"]*"$/version = "'"$RELEASE_VERSION"'"/' pyproject.toml
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
